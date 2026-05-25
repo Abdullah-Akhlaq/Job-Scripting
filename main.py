@@ -36,7 +36,7 @@ def main():
         "total_fetched": len(all_jobs),
         "sources": len(set(j["source"] for j in all_jobs))
     }
-    send(new_jobs, stats)
+    send_telegram(new_jobs, stats)
     print("\nTelegram notification sent ✅")
     print("=" * 40)
 

@@ -10,6 +10,11 @@ def fetch_jobs():
         "Werkstudent AI",
         "Werkstudent Python",
         "Werkstudent Machine Learning",
+        "Werkstudent Backend",
+        "Werkstudent Frontend",
+        "Werkstudent Cloud",
+        "Werkstudent DevOps"
+        
     ]
     
     headers = {"X-API-Key": "jobboerse-jobsuche"}
@@ -19,9 +24,8 @@ def fetch_jobs():
     for term in search_terms:
         params = {
             "was": term,
-            "wo": "München",       # change to your city if needed
             "angebotsart": 4,      # 4 = Werkstudent
-            "size": 10,
+            "size": 20,            # Increased to grab more fresh entries nationwide
         }
         try:
             r = requests.get(url, params=params, headers=headers, timeout=10)

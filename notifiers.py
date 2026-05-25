@@ -1,48 +1,67 @@
-import os
-import requests
+import requests, os
+from datetime import datetime
 
-def send_telegram(jobs):
-    bot_token = os.environ.get("BOT_TOKEN")
-    chat_id = os.environ.get("CHAT_ID")
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID   = os.environ["CHAT_ID"]
+API       = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-    if not bot_token or not chat_id:
-        print("[ERROR] Missing Telegram BOT_TOKEN or CHAT_ID environment variables.")
-        return
+SOURCE_ICONS = {
+    "Arbeitsagentur": "🏛",
+    "Indeed":         "🔵",
+    "StepStone":      "🟠",
+    "LinkedIn":       "💼",
+    "Glassdoor":      "🟢",
+    "Remotive":       "🌐",
+}
 
-    # Case: No jobs found, but send status ping anyway
-    if not jobs:
-        print("[INFO] No new jobs found. Sending HTML status ping to Telegram...")
-        message = "✅ <b>Job Hunt Status:</b> Automation executed successfully! No brand-new positions matched your criteria today."
-        _dispatch_message(bot_token, chat_id, message)
-        return
-
-    # Case: New jobs found
-    print(f"[INFO] Sending {len(jobs)} jobs to Telegram...")
-    for job in jobs:
-        # Using bulletproof HTML strings instead of unstable Markdown
-        message = (
-            f"🔍 <b>New Job Found!</b>\n\n"
-            f"💼 <b>Title:</b> {job['title']}\n"
-            f"🏢 <b>Company:</b> {job['company']}\n"
-            f"📍 <b>Location:</b> {job['location']}\n"
-            f"📅 <b>Date:</b> {job['date']}\n"
-            f"🔗 <a href='{job['link']}'>View Job Posting</a>"
-        )
-        _dispatch_message(bot_token, chat_id, message)
-
-def _dispatch_message(token, chat_id, text):
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
+def _send(text: str):
+    requests.post(API, json={
+        "chat_id": CHAT_ID,
         "text": text,
-        "parse_mode": "HTML"  # <-- Switched to HTML parsing
-    }
-    try:
-        r = requests.post(url, json=payload, timeout=10)
-        
-        # Explicit print statement to see the exact Telegram API feedback in GitHub logs
-        print(f"[TELEGRAM API RESPONSE] Status: {r.status_code} | Response: {r.text}")
-        
-        r.raise_for_status()
-    except Exception as e:
-        print(f"[ERROR] Failed to send Telegram message: {e}")
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True
+    })
+
+def send(jobs: list, stats: dict):
+    today = datetime.now().strftime("%d.%m.%Y")
+
+    # ── Header ──────────────────────────────────────────────
+    _send(
+        f"🤖 *Job Hunt — {today}*\n"
+        f"Scanned *{stats['total_fetched']}* listings across *{stats['sources']}* platforms\n"
+        f"✅ *{len(jobs)} new relevant jobs* after filtering\n"
+        f"{'─' * 30}"
+    )
+
+    if not jobs:
+        _send("No new jobs today. Will check again tomorrow at 8 AM ✅")
+        return
+
+    # ── Source breakdown ────────────────────────────────────
+    breakdown = {}
+    for j in jobs:
+        breakdown[j["source"]] = breakdown.get(j["source"], 0) + 1
+    lines = [f"{SOURCE_ICONS.get(s,'•')} {s}: *{n}*" for s, n in breakdown.items()]
+    _send("📊 *Sources breakdown*\n" + "\n".join(lines))
+
+    # ── Jobs in batches of 5 ────────────────────────────────
+    for i in range(0, min(len(jobs), 30), 5):   # cap at 30 jobs max
+        batch = jobs[i:i+5]
+        msg = ""
+        for j in batch:
+            stars = "⭐" * min(j.get("score", 1), 3)
+            icon  = SOURCE_ICONS.get(j["source"], "•")
+            msg += (
+                f"\n{stars} *{j['title']}*\n"
+                f"{icon} {j['source']}  🏢 {j['company']}\n"
+                f"📍 {j['location']}\n"
+                f"🔗 [View Job]({j['link']})\n"
+                f"{'─' * 30}\n"
+            )
+        _send(msg)
+
+    # ── Footer ──────────────────────────────────────────────
+    _send(
+        f"✅ *Done for today! Good luck! 🍀*\n"
+        f"_{len(jobs)} jobs shown · sorted by relevance · duplicates removed_"
+    )

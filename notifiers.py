@@ -11,21 +11,22 @@ def send_telegram(jobs):
 
     # Case: No jobs found, but send status ping anyway
     if not jobs:
-        print("[INFO] No new jobs found. Sending ping confirmation to Telegram...")
-        message = "✅ **Job Hunt Status:** Automation executed successfully! No brand-new positions matched your criteria today."
+        print("[INFO] No new jobs found. Sending HTML status ping to Telegram...")
+        message = "✅ <b>Job Hunt Status:</b> Automation executed successfully! No brand-new positions matched your criteria today."
         _dispatch_message(bot_token, chat_id, message)
         return
 
     # Case: New jobs found
     print(f"[INFO] Sending {len(jobs)} jobs to Telegram...")
     for job in jobs:
+        # Using bulletproof HTML strings instead of unstable Markdown
         message = (
-            f"🔍 **New Job Found!**\n\n"
-            f"💼 **Title:** {job['title']}\n"
-            f"🏢 **Company:** {job['company']}\n"
-            f"📍 **Location:** {job['location']}\n"
-            f"📅 **Date:** {job['date']}\n"
-            f"🔗 [View Job Posting]({job['link']})"
+            f"🔍 <b>New Job Found!</b>\n\n"
+            f"💼 <b>Title:</b> {job['title']}\n"
+            f"🏢 <b>Company:</b> {job['company']}\n"
+            f"📍 <b>Location:</b> {job['location']}\n"
+            f"📅 <b>Date:</b> {job['date']}\n"
+            f"🔗 <a href='{job['link']}'>View Job Posting</a>"
         )
         _dispatch_message(bot_token, chat_id, message)
 
@@ -34,10 +35,14 @@ def _dispatch_message(token, chat_id, text):
     payload = {
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "Markdown"
+        "parse_mode": "HTML"  # <-- Switched to HTML parsing
     }
     try:
         r = requests.post(url, json=payload, timeout=10)
+        
+        # Explicit print statement to see the exact Telegram API feedback in GitHub logs
+        print(f"[TELEGRAM API RESPONSE] Status: {r.status_code} | Response: {r.text}")
+        
         r.raise_for_status()
     except Exception as e:
         print(f"[ERROR] Failed to send Telegram message: {e}")

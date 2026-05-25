@@ -3,7 +3,7 @@ from scrapers.arbeitsagentur import fetch as fetch_arbeitsagentur
 from scrapers.rss_scraper     import fetch as fetch_rss
 from scrapers.remotive        import fetch as fetch_remotive
 from filter import filter_new_jobs
-from notifiers import send_telegram
+from notifiers import send
 
 def main():
     print("=" * 40)
@@ -36,7 +36,7 @@ def main():
         "total_fetched": len(all_jobs),
         "sources": len(set(j["source"] for j in all_jobs))
     }
-    send_telegram(new_jobs, stats)
+    send(new_jobs, stats)
     print("\nTelegram notification sent ✅")
     print("=" * 40)
 

@@ -1,7 +1,7 @@
 import os 
 from scrapers.arbeitsagentur import fetch_jobs
 from filter import filter_new_jobs
-from notifier import send_telegram
+from notifiers import send_telegram
 
 def main():
     print("=== Job Hunter Started ===")

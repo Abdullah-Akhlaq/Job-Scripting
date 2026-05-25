@@ -9,12 +9,14 @@ jobs:
   hunt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install deps
         run: pip install feedparser requests beautifulsoup4
+
       - name: Run job hunter
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
@@ -22,7 +24,8 @@ jobs:
         run: python main.py
 
       - name: Save DB
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4       # ✅ updated from v3 → v4
         with:
           name: jobs-db
           path: jobs.db
+          retention-days: 1                    # keep it lean, only need latest

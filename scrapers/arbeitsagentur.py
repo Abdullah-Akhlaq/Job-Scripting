@@ -1,22 +1,46 @@
 import requests
 
-def fetch_arbeitsagentur_jobs():
+def fetch_jobs():
     url = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs"
-    params = {
-        "was": "Werkstudent Software",
-        "wo": "München",
-        "angebotsart": 4,  # 4 = Werkstudent
-        "size": 25
-    }
-    headers = {"X-API-Key": "jobboerse-jobsuche"}  # public key
-    r = requests.get(url, params=params, headers=headers)
-    jobs = []
-    for job in r.json().get("stellenangebote", []):
-        jobs.append({
-            "title": job["titel"],
-            "company": job["arbeitgeber"],
-            "link": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{job['hashId']}",
-            "date": job["aktuelleVeroeffentlichungsdatum"],
-            "source": "Arbeitsagentur"
-        })
-    return jobs
+    
+    search_terms = [
+        "Werkstudent Software",
+        "Werkstudent IT",
+        "Werkstudent Data Science",
+        "Werkstudent AI",
+        "Werkstudent Python",
+        "Werkstudent Machine Learning",
+    ]
+    
+    headers = {"X-API-Key": "jobboerse-jobsuche"}
+    all_jobs = []
+    seen_ids = set()
+
+    for term in search_terms:
+        params = {
+            "was": term,
+            "wo": "München",       # change to your city if needed
+            "angebotsart": 4,      # 4 = Werkstudent
+            "size": 10,
+        }
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            for job in data.get("stellenangebote", []):
+                job_id = job.get("hashId")
+                if job_id and job_id not in seen_ids:
+                    seen_ids.add(job_id)
+                    all_jobs.append({
+                        "title": job.get("titel", "N/A"),
+                        "company": job.get("arbeitgeber", "Unknown"),
+                        "location": job.get("arbeitsort", {}).get("ort", "N/A"),
+                        "date": job.get("aktuelleVeroeffentlichungsdatum", "N/A"),
+                        "link": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{job_id}",
+                        "source": "Arbeitsagentur"
+                    })
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch '{term}': {e}")
+
+    print(f"[INFO] Total jobs fetched: {len(all_jobs)}")
+    return all_jobs

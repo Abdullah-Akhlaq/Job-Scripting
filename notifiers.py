@@ -2,7 +2,7 @@ import os
 import requests
 
 def send_telegram(jobs):
-    bot_token = "8923705038:AAELn5OacuMxVg33XQMDipNAcn6idpgKMQA"
+    bot_token = "8923705038:AAFHDQIFco37Kd7uanjcAOTGEpegvt6Y_jM"
     chat_id = "8923705038"
 
 

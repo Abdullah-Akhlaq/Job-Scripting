@@ -1,19 +1,31 @@
-import sqlite3
+import os
+import json
 
-KEYWORDS = ["software", "developer", "python", "data", "ai", "machine learning",
-            "backend", "frontend", "it", "werkstudent", "cloud", "devops"]
+DB_FILE = "seen_jobs.json"
 
-def is_relevant(title):
-    return any(kw in title.lower() for kw in KEYWORDS)
+def filter_new_jobs(jobs):
+    seen_links = set()
+    
+    # Load already seen job links if the file exists
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r") as f:
+                seen_links = set(json.load(f))
+        except Exception as e:
+            print(f"[WARNING] Could not read cache file: {e}")
 
-def is_new(job, db_path="jobs.db"):
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS seen (link TEXT PRIMARY KEY)")
-    cur.execute("SELECT 1 FROM seen WHERE link=?", (job["link"],))
-    exists = cur.fetchone()
-    if not exists:
-        cur.execute("INSERT INTO seen VALUES (?)", (job["link"],))
-        conn.commit()
-    conn.close()
-    return not exists
+    # Filter out jobs we've already seen
+    new_jobs = [job for job in jobs if job["link"] not in seen_links]
+
+    # Update our tracker with the new jobs
+    for job in new_jobs:
+        seen_links.add(job["link"])
+
+    try:
+        with open(DB_FILE, "w") as f:
+            json.dump(list(seen_links), f)
+    except Exception as e:
+        print(f"[ERROR] Could not save cache file: {e}")
+
+    print(f"[INFO] Filtered down to {len(new_jobs)} new jobs.")
+    return new_jobs

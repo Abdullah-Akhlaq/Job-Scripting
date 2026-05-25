@@ -2,9 +2,8 @@ import os
 import requests
 
 def send_telegram(jobs):
-    bot_token = "8923705038:AAFHDQIFco37Kd7uanjcAOTGEpegvt6Y_jM"
-    chat_id = "8923705038"
-
+    bot_token = os.environ.get("BOT_TOKEN")
+    chat_id = os.environ.get("CHAT_ID")
 
     if not bot_token or not chat_id:
         print("[ERROR] Missing Telegram BOT_TOKEN or CHAT_ID environment variables.")

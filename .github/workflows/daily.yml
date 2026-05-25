@@ -1,0 +1,28 @@
+name: Daily Job Hunt
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 7 AM UTC = 8 AM Germany (CET) / 9 AM CEST in summer
+  workflow_dispatch:       # manual trigger for testing
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install feedparser requests beautifulsoup4
+      - name: Run job hunter
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python main.py
+
+      - name: Save DB
+        uses: actions/upload-artifact@v3
+        with:
+          name: jobs-db
+          path: jobs.db

@@ -1,4 +1,3 @@
-
 # notifiers.py
 import os
 import json
@@ -40,19 +39,22 @@ def send(jobs, stats):
             priority_groups[priority] = []
         priority_groups[priority].append(job)
 
-    # Priority labels
+    # Priority labels - Werkstudent > Internship
     priority_labels = {
-        1: "🔥 TOP PRIORITY - Werkstudent/Internship (Perfect Match)",
-        2: "⭐ HIGH PRIORITY - IT/Admin Student Roles",
-        3: "👍 GOOD - General Student Developer Roles",
-        4: "📌 MEDIUM - Standard IT/Software Roles",
-        5: "📍 LOW - Other Roles"
+        1: "🔥 WERKSTUDENT ROLES (Highest Priority)",
+        2: "⭐ INTERNSHIP ROLES (High Priority)",
+        5: "📍 OTHER",
     }
 
     # Send header
     header = (
-        f"🔍 *Daily Job Hunt* - {datetime.now().strftime('%Y-%m-%d')}\n"
-        f"✅ Found *{len(jobs)}* matching jobs!\n\n"
+        f"🔍 *Daily Werkstudent/Internship Job Hunt* - {datetime.now().strftime('%Y-%m-%d')}\n"
+        f"✅ Found *{len(jobs)}* matching jobs!\n"
+        f"📊 *STRICT FILTERS APPLIED:*\n"
+        f"✓ Werkstudent / Internship roles ONLY\n"
+        f"✓ English language required\n"
+        f"✓ Frontend / Fullstack / IT / Admin / Software Dev only\n"
+        f"✓ NO full-time roles\n\n"
         f"📊 Stats:\n"
         f"• Total scanned: {stats.get('total_fetched', 0)}\n"
         f"• Sources: {stats.get('sources', 0)}\n"
@@ -77,13 +79,21 @@ def send(jobs, stats):
     # Send footer with application tips
     footer = (
         "\n" + "━" * 40 + "\n"
-        "💡 *Tips for applying:*\n"
-        "• Customize your cover letter for each job\n"
-        "• Highlight relevant projects & skills\n"
+        "✨ *This hunt searched for:*\n"
+        "✓ Werkstudent positions (all regions in Germany)\n"
+        "✓ Internship positions (all regions in Germany)\n"
+        "✓ English language jobs ONLY\n"
+        "✓ Frontend / Fullstack / IT / Admin / Software Developer\n"
+        "✓ NO full-time roles\n\n"
+        "💡 *Tips for quick applications:*\n"
+        "• Customize cover letter (5-10 min per application)\n"
+        "• Show relevant projects & GitHub repos\n"
+        "• Mention your technology stack\n"
         "• Follow up after 1 week if no response\n"
-        "• Keep a spreadsheet of applications\n\n"
-        "🎯 *Good luck with your applications!* 💪\n"
-        f"Next hunt: Tomorrow at 8 AM (German time)"
+        "• Keep track of all applications\n\n"
+        "🎯 *Apply to ALL matching jobs - Every. Single. One!*\n"
+        "💪 The more you apply, the faster you'll get hired!\n\n"
+        f"⏰ Next hunt: Tomorrow at 8 AM (German time)"
     )
     send_telegram_message(bot_token, chat_id, footer)
 
@@ -98,6 +108,7 @@ def format_job_message(job, number):
     date_posted = job.get("date", "")
     description = job.get("description", "")
     source = job.get("source", "Unknown")
+    role = job.get("role", "Unknown")
 
     # Clean up date if it exists
     if date_posted:
@@ -120,6 +131,7 @@ def format_job_message(job, number):
 
     message = (
         f"*{number}. {title}*\n"
+        f"🎯 Role Type: {role}\n"
         f"🏢 {company}\n"
         f"📍 {location}\n"
         f"📅 {date_posted}\n"

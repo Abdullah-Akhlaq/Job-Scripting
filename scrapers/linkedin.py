@@ -1,9 +1,19 @@
 # scrapers/linkedin.py
+"""
+STRICT Werkstudent/Internship Job Scraper
+
+FILTERS:
+1. MUST be Werkstudent OR Internship OR Working Student (in title/description)
+2. MUST be English language (title or description)
+3. MUST match role: Frontend, Fullstack, IT, Administration, Software Developer
+4. Searches Germany-wide (not just Munich)
+5. Excludes full-time roles
+"""
+
 import requests
 from bs4 import BeautifulSoup
 import time
 import re
-from urllib.parse import urljoin
 
 HEADERS = {
     "User-Agent": (
@@ -14,186 +24,288 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9,de-DE;q=0.8",
 }
 
-# Priority keywords for job titles (higher priority = listed first)
-PRIORITY_KEYWORDS = {
-    "werkstudent software developer": 1,
-    "werkstudent frontend developer": 1,
-    "werkstudent backend developer": 1,
-    "werkstudent it": 2,
-    "internship it": 2,
-    "internship software": 2,
-    "working student software": 3,
-    "working student it": 3,
-    "student developer": 3,
+# ==================== STRICT KEYWORDS ====================
+
+# REQUIRED: Job must explicitly have one of these terms
+# These identify Werkstudent/Internship/Working Student positions
+MANDATORY_STUDENT_KEYWORDS = {
+    "werkstudent": "Werkstudent",
+    "working student": "Working Student",
+    "work-study student": "Work-Study Student",
+    "student assistant": "Student Assistant",
+    "student employee": "Student Employee",
+    "internship": "Internship",
+    "intern": "Intern",
+    "praktikum": "Praktikum",
+    "hiwi": "HiWi",
+    "studentische hilfskraft": "Studentische Hilfskraft",
 }
 
-# Keywords that indicate English language job
-ENGLISH_INDICATORS = [
-    "english", "english required", "fluent english", 
-    "english speaking", "english language",
-    "proficient english", "advanced english"
+# English language indicators (must find at least one in description)
+ENGLISH_LANGUAGE_KEYWORDS = [
+    "english required", "english language", "english fluent", "fluent english",
+    "english speaking", "must speak english", "proficient english", 
+    "advanced english", "business english", "strong english",
+    "english skills", "english ability"
 ]
 
-# Keywords that indicate Werkstudent/Student role
-STUDENT_KEYWORDS = [
-    "werkstudent", "working student", "student assistant",
-    "internship", "intern", "praktikum", "hiwi"
+# STRICT ROLE FILTERS - Only these exact roles
+ALLOWED_ROLES = {
+    "Frontend": ["frontend", "front-end", "react", "vue", "angular", "react native"],
+    "Fullstack": ["fullstack", "full-stack", "full stack"],
+    "IT": ["it ", "it support", "it admin", "it technician", "it specialist", "system admin", "system administrator"],
+    "Software Developer": ["software developer", "software engineer", "developer", "programmer"],
+    "Administration": ["administrator", "admin", "it administration"],
+}
+
+# Blacklist words that indicate full-time roles
+FULLTIME_BLACKLIST = [
+    "full-time", "full time", "fulltime", "full-timer",
+    "permanent position", "festanstellung", "unbefristet",
+    "40 hours", "40h", "40-hour",
 ]
 
-# Job categories we're interested in
-JOB_CATEGORIES = [
-    "software", "developer", "frontend", "backend", "full-stack",
-    "it", "it support", "system", "administrator", "devops",
-    "python", "javascript", "java", "c++", "react", "node",
-    "database", "sql", "web development", "programming"
+# Words to EXCLUDE (indicates role is not suitable)
+EXCLUDE_KEYWORDS = [
+    "full time", "full-time", "permanent", "festanstellung",
+    "senior", "principal", "lead", "manager", "lead developer",
+    "sales", "marketing", "business development",
 ]
 
-def is_english_job(text):
+
+def is_mandatory_student_role(text):
     """
-    Check if job description/title contains English language indicators.
-    Returns True if English is detected, False otherwise.
+    STRICT CHECK: Job title or description MUST contain student/internship keywords.
+    Returns: True if found, False otherwise
     """
     if not text:
         return False
     
     text_lower = text.lower()
     
-    # Check for explicit English indicators
-    for indicator in ENGLISH_INDICATORS:
-        if indicator in text_lower:
+    for keyword in MANDATORY_STUDENT_KEYWORDS.keys():
+        if keyword in text_lower:
+            print(f"[LinkedIn Filter] ✓ Found student role keyword: '{keyword}'")
             return True
     
-    # If no explicit indicator, assume English if text is in English
-    # (This is a simple heuristic - if it contains common English words/patterns)
+    print(f"[LinkedIn Filter] ✗ No Werkstudent/Internship keywords found")
+    return False
+
+
+def is_english_language(text):
+    """
+    STRICT CHECK: Description must contain English language indicators.
+    Returns: True if English is detected, False otherwise
+    """
+    if not text:
+        print(f"[LinkedIn Filter] ✗ No text to check for English")
+        return False
+    
+    text_lower = text.lower()
+    
+    # Check for explicit English language requirement
+    for keyword in ENGLISH_LANGUAGE_KEYWORDS:
+        if keyword in text_lower:
+            print(f"[LinkedIn Filter] ✓ Found English indicator: '{keyword}'")
+            return True
+    
+    # Check for common English patterns in job description
     english_patterns = [
-        r"\byou\b", r"\byour\b", r"\bwe\b", r"\bour\b", 
-        r"\brequired\b", r"\bpreferred\b", r"\bresponsibilities\b",
-        r"\bsalary\b", r"\bbenefits\b"
+        r"\byou\b", r"\byour\b", r"\bwe\b", r"\bour\b",
+        r"\bresponsibilities\b", r"\brequirements\b",
+        r"\bwill\b", r"\bwould\b", r"\bshould\b",
     ]
     
+    english_count = 0
     for pattern in english_patterns:
         if re.search(pattern, text_lower):
-            return True
+            english_count += 1
     
+    if english_count >= 3:
+        print(f"[LinkedIn Filter] ✓ Detected English language (pattern match: {english_count} patterns)")
+        return True
+    
+    print(f"[LinkedIn Filter] ✗ Description does not appear to be in English")
     return False
 
-def is_student_role(text):
+
+def matches_allowed_role(text):
     """
-    Check if job is explicitly marked as Werkstudent/Internship/Working Student.
+    STRICT CHECK: Job must match one of the allowed roles.
+    Returns: Role name if matched, None otherwise
+    """
+    if not text:
+        return None
+    
+    text_lower = text.lower()
+    
+    for role_name, keywords in ALLOWED_ROLES.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                print(f"[LinkedIn Filter] ✓ Matched role: {role_name} (keyword: '{keyword}')")
+                return role_name
+    
+    print(f"[LinkedIn Filter] ✗ Does not match allowed roles (Frontend/Fullstack/IT/Admin/Software Dev)")
+    return None
+
+
+def is_not_fulltime(text):
+    """
+    STRICT CHECK: Job should NOT be full-time.
+    Returns: True if not full-time, False if it appears to be full-time
+    """
+    if not text:
+        return True
+    
+    text_lower = text.lower()
+    
+    # Check for full-time indicators
+    for blacklist_word in FULLTIME_BLACKLIST:
+        if blacklist_word in text_lower:
+            print(f"[LinkedIn Filter] ✗ Detected full-time role: '{blacklist_word}'")
+            return False
+    
+    print(f"[LinkedIn Filter] ✓ Not detected as full-time")
+    return True
+
+
+def should_exclude_job(text):
+    """
+    Check if job has ANY exclusion keywords.
+    Returns: True if should exclude, False if OK to include
     """
     if not text:
         return False
     
     text_lower = text.lower()
-    for keyword in STUDENT_KEYWORDS:
-        if keyword in text_lower:
+    
+    for exclude_word in EXCLUDE_KEYWORDS:
+        if exclude_word in text_lower:
+            print(f"[LinkedIn Filter] ✗ Excluded: contains '{exclude_word}'")
             return True
     
     return False
 
-def get_job_priority(title):
-    """
-    Calculate priority score for job based on keywords.
-    Lower number = higher priority (appears first).
-    """
-    title_lower = title.lower()
-    
-    for keyword, priority in PRIORITY_KEYWORDS.items():
-        if keyword in title_lower:
-            return priority
-    
-    # Check if it matches job category
-    for category in JOB_CATEGORIES:
-        if category in title_lower:
-            return 4  # Medium-low priority for generic IT/Software roles
-    
-    return 5  # Lowest priority for non-matching roles
 
 def scrape_job_description(job_url):
     """
-    Scrape the full job description from the LinkedIn job page.
-    Returns the description text or None if scraping fails.
+    Scrape the full job description from LinkedIn job page.
+    Returns: description text or empty string if fails
     """
     try:
         resp = requests.get(job_url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
         
-        # Try to find job description
+        # Try primary selector
         description_div = soup.find("div", class_="show-more-less-html__markup")
         if description_div:
             return description_div.get_text(strip=True)
         
-        # Alternative selectors
+        # Try alternative selectors
         desc = soup.find("div", class_="description__text")
         if desc:
             return desc.get_text(strip=True)
         
-        return None
+        return ""
     except Exception as e:
         print(f"[LinkedIn] Error scraping job description: {e}")
-        return None
+        return ""
 
-def should_include_job(job):
+
+def get_job_priority(title, role):
     """
-    Determine if a job should be included based on our criteria:
-    - Must be in English
-    - Must be a Werkstudent/Internship/Working Student role
-    - Should be in IT/Software/Administration
+    All Werkstudent roles = priority 1 (high)
+    All Internship roles = priority 2 (medium)
+    Returns: priority score (lower = higher priority)
     """
-    title = job.get("title", "").lower()
-    description = job.get("description", "").lower()
-    combined_text = f"{title} {description}"
+    title_lower = title.lower()
     
-    # Check if it's in English
-    if not is_english_job(combined_text):
-        return False
+    # Werkstudent gets highest priority
+    if "werkstudent" in title_lower or "working student" in title_lower:
+        return 1
     
-    # Check if it's a student role
-    if not is_student_role(combined_text):
-        return False
+    # Internship gets medium priority
+    if "intern" in title_lower or "praktikum" in title_lower:
+        return 2
     
-    # Check if it matches our job categories
-    has_matching_category = any(
-        category in combined_text 
-        for category in JOB_CATEGORIES
-    )
+    # Default
+    return 2
+
+
+def filter_job(job):
+    """
+    Apply ALL STRICT filters to a job.
+    Returns: (include: bool, role_name: str or None, reason: str)
+    """
+    title = job.get("title", "")
+    description = job.get("description", "")
+    combined = f"{title} {description}"
     
-    return has_matching_category
+    print(f"\n[LinkedIn Filter] Checking: {title[:60]}...")
+    
+    # Filter 1: MUST be Werkstudent/Internship
+    if not is_mandatory_student_role(combined):
+        return False, None, "Not a Werkstudent/Internship role"
+    
+    # Filter 2: MUST NOT be full-time
+    if not is_not_fulltime(combined):
+        return False, None, "Appears to be full-time position"
+    
+    # Filter 3: MUST match allowed role
+    matched_role = matches_allowed_role(combined)
+    if not matched_role:
+        return False, None, "Does not match allowed roles"
+    
+    # Filter 4: MUST be in English
+    if not is_english_language(description):
+        return False, matched_role, "Description is not in English"
+    
+    # Filter 5: Should NOT have exclusion keywords
+    if should_exclude_job(combined):
+        return False, matched_role, "Contains exclusion keywords"
+    
+    print(f"[LinkedIn Filter] ✓✓✓ PASSED ALL FILTERS - {matched_role} role ✓✓✓")
+    return True, matched_role, "Passed all filters"
+
 
 def fetch():
     """
-    Fetch jobs from LinkedIn with enhanced filtering.
+    Fetch ONLY Werkstudent/Internship jobs from LinkedIn.
+    STRICT filtering for student roles in Germany.
     """
     jobs = []
     
-    # Enhanced search queries
+    # Germany-wide searches (not just Munich)
     SEARCHES = [
-        "werkstudent software developer Munich",
-        "werkstudent frontend developer Munich",
-        "werkstudent backend developer Munich",
-        "werkstudent IT Munich",
-        "internship IT Munich",
-        "internship software Munich",
-        "working student developer Munich",
-        "student IT support Munich",
+        "werkstudent frontend developer Germany",
+        "werkstudent fullstack developer Germany",
+        "werkstudent software developer Germany",
+        "werkstudent it support Germany",
+        "werkstudent it administrator Germany",
+        "internship frontend developer Germany",
+        "internship fullstack developer Germany",
+        "internship software developer Germany",
+        "internship it Germany",
+        "working student developer Germany",
     ]
     
     for query in SEARCHES:
         url = (
             "https://www.linkedin.com/jobs/search/"
             f"?keywords={query.replace(' ', '%20')}"
-            "&location=Munich%2C%20Bavaria%2C%20Germany"
+            "&location=Germany"
             "&f_TPR=r86400"    # posted in last 24 hours
             "&f_JT=P"          # P = part-time (Werkstudent/Internship)
             "&start=0"
         )
         
         try:
-            print(f"[LinkedIn] Fetching: {query}")
+            print(f"\n[LinkedIn] Searching: {query}")
             resp = requests.get(url, headers=HEADERS, timeout=15)
             soup = BeautifulSoup(resp.text, "html.parser")
 
             cards = soup.find_all("div", class_="base-card")
+            print(f"[LinkedIn] Found {len(cards)} job cards")
             
             for card in cards:
                 try:
@@ -203,45 +315,52 @@ def fetch():
                     date_el    = card.find("time")
                     link_el    = card.find("a", class_="base-card__full-link")
 
-                    if title_el and link_el:
-                        job_url = link_el.get("href", "").split("?")[0]
-                        
-                        # Scrape job description
-                        print(f"[LinkedIn] Scraping description for: {title_el.get_text(strip=True)[:50]}...")
-                        description = scrape_job_description(job_url)
-                        time.sleep(1)  # Be polite
-                        
-                        job = {
-                            "title":       title_el.get_text(strip=True),
-                            "company":     company_el.get_text(strip=True) if company_el else "Unknown",
-                            "location":    location_el.get_text(strip=True) if location_el else "München",
-                            "date":        date_el.get("datetime", "") if date_el else "",
-                            "link":        job_url,
-                            "description": description or "",
-                            "source":      "LinkedIn",
-                            "priority":    0,  # Will be set after filtering
-                        }
-                        
-                        # Filter based on our criteria
-                        if should_include_job(job):
-                            job["priority"] = get_job_priority(job["title"])
-                            jobs.append(job)
-                            print(f"[LinkedIn] ✓ Added: {job['title']}")
-                        else:
-                            print(f"[LinkedIn] ✗ Filtered out: {title_el.get_text(strip=True)}")
+                    if not (title_el and link_el):
+                        continue
+
+                    job_url = link_el.get("href", "").split("?")[0]
+                    
+                    # Scrape full description
+                    print(f"[LinkedIn] Scraping: {title_el.get_text(strip=True)[:50]}...")
+                    description = scrape_job_description(job_url)
+                    time.sleep(1)  # Be polite to LinkedIn
+                    
+                    job = {
+                        "title":       title_el.get_text(strip=True),
+                        "company":     company_el.get_text(strip=True) if company_el else "Unknown",
+                        "location":    location_el.get_text(strip=True) if location_el else "Germany",
+                        "date":        date_el.get("datetime", "") if date_el else "",
+                        "link":        job_url,
+                        "description": description,
+                        "source":      "LinkedIn",
+                        "priority":    5,  # Will be updated if job passes filters
+                    }
+                    
+                    # Apply STRICT filters
+                    include, role, reason = filter_job(job)
+                    
+                    if include:
+                        job["role"] = role
+                        job["priority"] = get_job_priority(job["title"], role)
+                        jobs.append(job)
+                        print(f"[LinkedIn] ✅ ADDED: {job['title']}")
+                    else:
+                        print(f"[LinkedIn] ❌ REJECTED: {reason}")
                 
                 except Exception as e:
-                    print(f"[LinkedIn] Error processing card: {e}")
+                    print(f"[LinkedIn] Error processing job: {e}")
                     continue
 
-            print(f"[LinkedIn] '{query}': {len(cards)} cards found, {len([j for j in jobs if j['source'] == 'LinkedIn'])} passed filters")
-            time.sleep(2)   # be polite — 2 second delay between queries
+            time.sleep(2)   # Be polite — delay between queries
 
         except Exception as e:
-            print(f"[LinkedIn] ERROR for '{query}': {e}")
+            print(f"[LinkedIn] ERROR fetching '{query}': {e}")
     
-    # Sort by priority (lower number = higher priority)
+    # Sort by priority (lower = higher priority)
     jobs.sort(key=lambda x: x["priority"])
     
-    print(f"[LinkedIn] Final count: {len(jobs)} jobs passed all filters")
+    print(f"\n{'='*60}")
+    print(f"[LinkedIn] FINAL RESULT: {len(jobs)} Werkstudent/Internship jobs found")
+    print(f"{'='*60}")
+    
     return jobs
